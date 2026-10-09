@@ -2,7 +2,7 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useState,
   type ReactNode,
 } from 'react';
-import type { Category, Transaction, TxType } from '../types';
+import type { Category, Transaction, TxType, Wallet } from '../types';
 import { storage } from '../lib/storage';
 import { monthKey } from '../lib/format';
 
@@ -14,6 +14,7 @@ interface Toast {
 
 interface AppState {
   transactions: Transaction[];
+  wallets: Wallet[];
   categories: Category[];
   budgets: Record<string, number>;
   theme: 'light' | 'dark';
@@ -21,6 +22,8 @@ interface AppState {
   addTransaction: (tx: Omit<Transaction, 'id' | 'createdAt'>) => void;
   updateTransaction: (tx: Transaction) => void;
   deleteTransaction: (id: string) => void;
+  addWallet: (name: string, provider: string, openingBalance: number) => string | null;
+  deleteWallet: (id: string) => boolean;
   addCategory: (name: string, type: TxType) => void;
   renameCategory: (oldName: string, type: TxType, newName: string) => void;
   deleteCategory: (name: string, type: TxType) => boolean;
@@ -34,6 +37,7 @@ const Ctx = createContext<AppState | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>(storage.loadTransactions);
+  const [wallets, setWallets] = useState<Wallet[]>(storage.loadWallets);
   const [customCats, setCustomCats] = useState<Category[]>(() =>
     storage.loadCategories().filter((c) => c.custom),
   );
@@ -42,6 +46,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   useEffect(() => storage.saveTransactions(transactions), [transactions]);
+  useEffect(() => storage.saveWallets(wallets), [wallets]);
   useEffect(() => storage.saveCategories(customCats), [customCats]);
   useEffect(() => storage.saveBudgets(budgets), [budgets]);
   useEffect(() => {
@@ -69,6 +74,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteTransaction = useCallback((id: string) => {
     setTransactions((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const addWallet = useCallback((name: string, provider: string, openingBalance: number): string | null => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const id = crypto.randomUUID();
+    setWallets((prev) => [
+      ...prev,
+      { id, name: trimmed, provider, openingBalance, createdAt: Date.now() },
+    ]);
+    return id;
+  }, []);
+
+  const deleteWallet = useCallback((id: string): boolean => {
+    if (transactions.some((tx) => tx.walletId === id || tx.transferToWalletId === id)) return false;
+    setWallets((prev) => prev.filter((wallet) => wallet.id !== id));
+    return true;
+  }, [transactions]);
 
   const addCategory = useCallback((name: string, type: TxType) => {
     const trimmed = name.trim();
@@ -110,6 +132,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resetAll = useCallback(() => {
     storage.clearAll();
     setTransactions([]);
+    setWallets([]);
     setCustomCats([]);
     setBudgets({});
   }, []);
@@ -120,8 +143,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [customCats]);
 
   const value: AppState = {
-    transactions, categories, budgets, theme, toasts,
+    transactions, wallets, categories, budgets, theme, toasts,
     addTransaction, updateTransaction, deleteTransaction,
+    addWallet, deleteWallet,
     addCategory, renameCategory, deleteCategory,
     setBudget, toggleTheme, resetAll, toast,
   };
