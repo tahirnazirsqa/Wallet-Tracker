@@ -6,6 +6,7 @@ import { TransactionsPage } from './components/TransactionsPage';
 import { ReportsPage } from './components/ReportsPage';
 import { BudgetPage } from './components/BudgetPage';
 import { CategoriesPage } from './components/CategoriesPage';
+import { WalletsPage } from './components/WalletsPage';
 import type { Page } from './types';
 
 export default function App() {
@@ -19,6 +20,7 @@ export default function App() {
         {page === 'reports' && <ReportsPage />}
         {page === 'budget' && <BudgetPage />}
         {page === 'categories' && <CategoriesPage />}
+        {page === 'wallets' && <WalletsPage />}
       </Layout>
     </AppProvider>
   );
