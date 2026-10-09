@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import type { Page } from '../types';
 import { Toasts } from './ui';
+import { UserManual } from './UserManual';
 
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -17,10 +18,11 @@ export function Layout({ page, setPage, children }: {
   setPage: (p: Page) => void;
   children: React.ReactNode;
 }) {
-  const { theme, toggleTheme, toasts, resetAll, toast } = useApp();
+  const { theme, toggleTheme, toasts, resetAll, toast, userEmail, signOut } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetAcknowledged, setResetAcknowledged] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
 
   const go = (p: Page) => {
     setPage(p);
@@ -44,7 +46,7 @@ export function Layout({ page, setPage, children }: {
         </div>
       </header>
 
-      <aside className={`fixed right-0 top-0 z-40 flex h-full w-64 flex-col transform border-l border-slate-200 bg-white p-4 shadow-xl transition-transform dark:border-slate-800 dark:bg-slate-900 ${
+      <aside className={`fixed right-0 top-0 z-40 flex h-full w-64 flex-col overflow-y-auto transform border-l border-slate-200 bg-white p-4 shadow-xl transition-transform dark:border-slate-800 dark:bg-slate-900 ${
         menuOpen ? 'translate-x-0' : 'translate-x-full'
       }`}>
         <div className="mb-4 flex items-center justify-between">
@@ -66,6 +68,28 @@ export function Layout({ page, setPage, children }: {
             </button>
           ))}
         </nav>
+        <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <button
+            onClick={() => { setManualOpen(true); setMenuOpen(false); }}
+            className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            📖 User manual
+          </button>
+        </div>
+        <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <p className="break-all text-xs text-slate-500 dark:text-slate-400">{userEmail}</p>
+          <button
+            className="mt-2 w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            onClick={() => {
+              void signOut().catch((error: unknown) => {
+                console.error('Could not sign out of Firebase', error);
+                toast('Could not sign out. Please try again.', 'error');
+              });
+            }}
+          >
+            Sign out
+          </button>
+        </div>
         <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-800">
           <button
             onClick={() => { setConfirmReset(true); setMenuOpen(false); }}
@@ -91,12 +115,14 @@ export function Layout({ page, setPage, children }: {
 
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
 
+      <UserManual open={manualOpen} onClose={() => setManualOpen(false)} />
+
       {confirmReset && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setConfirmReset(false)}>
           <div className="card w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-2 font-semibold text-red-600">Reset all data?</h3>
             <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
-              This permanently deletes all transactions, wallets, budgets, and custom categories stored in this browser.
+              This permanently deletes your cloud transactions, wallets, budgets, and custom categories, along with the local copy on this device.
             </p>
             <label className="mb-4 flex items-center gap-2 text-sm">
               <input
@@ -112,10 +138,14 @@ export function Layout({ page, setPage, children }: {
                 className="btn-danger"
                 disabled={!resetAcknowledged}
                 onClick={() => {
-                  resetAll();
-                  setConfirmReset(false);
-                  setResetAcknowledged(false);
-                  toast('All data reset');
+                  void resetAll().then(() => {
+                    setConfirmReset(false);
+                    setResetAcknowledged(false);
+                    toast('All data reset');
+                  }).catch((error: unknown) => {
+                    console.error('Could not reset Firebase data', error);
+                    toast('Could not reset all cloud data. Please try again.', 'error');
+                  });
                 }}
               >
                 Reset
