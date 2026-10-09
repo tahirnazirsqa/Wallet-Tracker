@@ -7,14 +7,14 @@ import { useApp } from '../context/AppContext';
 import { fmtRs, monthKey, monthLabel, MONTH_NAMES } from '../lib/format';
 import { Card, EmptyState } from './ui';
 import { TransactionForm } from './TransactionForm';
-import type { TxType } from '../types';
+import type { TransactionType } from '../types';
 
 const DONUT_COLORS = ['#2e7d32', '#1976d2', '#ed6c02', '#6a1b9a', '#00838f', '#c2185b', '#5d4037', '#827717', '#455a64', '#000000'];
 
 export function Dashboard() {
-  const { transactions } = useApp();
+  const { transactions, wallets } = useApp();
   const [formOpen, setFormOpen] = useState(false);
-  const [defaultType, setDefaultType] = useState<TxType>('expense');
+  const [defaultType, setDefaultType] = useState<TransactionType>('expense');
   const [selectedMonth, setSelectedMonth] = useState(monthKey(new Date().toISOString().slice(0, 10)));
 
   const stats = useMemo(() => {
@@ -24,8 +24,28 @@ export function Dashboard() {
       .reduce((s, t) => s + t.amount, 0);
     const mExpense = transactions.filter((t) => t.type === 'expense' && monthKey(t.date) === selectedMonth)
       .reduce((s, t) => s + t.amount, 0);
-    return { income, expense, balance: income - expense, mIncome, mExpense };
-  }, [transactions, selectedMonth]);
+    const openingBalances = wallets.reduce((total, wallet) => total + wallet.openingBalance, 0);
+    const walletBalances = wallets.map((wallet) => {
+      const activity = transactions
+        .filter((t) => t.walletId === wallet.id || t.transferToWalletId === wallet.id)
+        .reduce((total, t) => {
+          if (t.type === 'transfer' || t.type === 'withdrawal') {
+            return total + (t.walletId === wallet.id ? -t.amount : t.amount);
+          }
+          if (t.walletId !== wallet.id) return total;
+          return total + (t.type === 'income' ? t.amount : -t.amount);
+        }, 0);
+      return { name: wallet.name, balance: wallet.openingBalance + activity };
+    });
+    return {
+      income,
+      expense,
+      balance: income - expense + openingBalances,
+      walletBalances,
+      mIncome,
+      mExpense,
+    };
+  }, [transactions, selectedMonth, wallets]);
 
   const monthlyChart = useMemo(() => {
     const [y, m] = selectedMonth.split('-').map(Number);
@@ -53,12 +73,18 @@ export function Dashboard() {
     [transactions],
   );
 
-  const openForm = (type: TxType) => { setDefaultType(type); setFormOpen(true); };
+  const openForm = (type: TransactionType) => { setDefaultType(type); setFormOpen(true); };
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <SummaryCard label="Current Balance" value={fmtRs(stats.balance)} tone="brand" icon="💰" />
+        <SummaryCard
+          label="Current Balance"
+          value={fmtRs(stats.balance)}
+          tone="brand"
+          icon="💰"
+          details={stats.walletBalances}
+        />
         <SummaryCard label="Total Income" value={fmtRs(stats.income)} tone="income" icon="⬆️" />
         <SummaryCard label="Total Expenses" value={fmtRs(stats.expense)} tone="expense" icon="⬇️" />
         <SummaryCard label="This Month's Income" value={fmtRs(stats.mIncome)} tone="income" icon="📅" />
@@ -68,6 +94,8 @@ export function Dashboard() {
       <div className="flex flex-wrap gap-2">
         <button className="btn-primary" onClick={() => openForm('expense')}>＋ Add Expense</button>
         <button className="btn-primary" onClick={() => openForm('income')}>＋ Add Income</button>
+        <button className="btn-ghost" onClick={() => openForm('transfer')}>↔ Transfer between wallets</button>
+        <button className="btn-ghost" onClick={() => openForm('withdrawal')}>↓ Withdraw to Cash</button>
       </div>
 
       <Card>
@@ -139,13 +167,28 @@ export function Dashboard() {
               {recent.map((t) => (
                 <li key={t.id} className="flex items-center justify-between py-2.5">
                   <div>
-                    <p className="text-sm font-medium">{t.category}</p>
+                    <p className="text-sm font-medium">
+                      {t.type === 'transfer' ? 'Transfer' : t.type === 'withdrawal' ? 'Withdrawal to Cash' : t.category}
+                    </p>
                     <p className="text-xs text-slate-400">
                       {t.date}{t.description ? ` · ${t.description}` : ''}
                     </p>
+                    {t.type === 'transfer' || t.type === 'withdrawal' ? (
+                      <p className={`text-xs ${t.type === 'withdrawal' ? 'text-amber-600 dark:text-amber-400' : 'text-sky-600 dark:text-sky-400'}`}>
+                        {wallets.find((wallet) => wallet.id === t.walletId)?.name ?? 'Account'} → {wallets.find((wallet) => wallet.id === t.transferToWalletId)?.name ?? 'Account'}
+                      </p>
+                    ) : t.walletId && wallets.find((wallet) => wallet.id === t.walletId) && (
+                      <p className="text-xs text-slate-400">
+                        {wallets.find((wallet) => wallet.id === t.walletId)?.name}
+                      </p>
+                    )}
                   </div>
-                  <span className={`text-sm font-semibold ${t.type === 'income' ? 'text-brand-600' : 'text-red-500'}`}>
-                    {t.type === 'income' ? '+' : '−'}{fmtRs(t.amount)}
+                  <span className={`text-sm font-semibold ${
+                    t.type === 'income' ? 'text-brand-600'
+                      : t.type === 'transfer' ? 'text-sky-600'
+                        : t.type === 'withdrawal' ? 'text-amber-600' : 'text-red-500'
+                  }`}>
+                    {t.type === 'transfer' ? '↔ ' : t.type === 'withdrawal' ? '↓ ' : t.type === 'income' ? '+' : '−'}{fmtRs(t.amount)}
                   </span>
                 </li>
               ))}
@@ -154,12 +197,20 @@ export function Dashboard() {
         </Card>
       </div>
 
-      <TransactionForm open={formOpen} onClose={() => setFormOpen(false)} defaultType={defaultType} />
+      <TransactionForm key={defaultType} open={formOpen} onClose={() => setFormOpen(false)} defaultType={defaultType} />
     </div>
   );
 }
 
-function SummaryCard({ label, value, tone, icon }: { label: string; value: string; tone: 'brand' | 'income' | 'expense'; icon: string }) {
+function SummaryCard({
+  label, value, tone, icon, details,
+}: {
+  label: string;
+  value: string;
+  tone: 'brand' | 'income' | 'expense';
+  icon: string;
+  details?: { name: string; balance: number }[];
+}) {
   const tones = {
     brand: 'from-brand-500 to-brand-700 text-white',
     income: 'from-emerald-500 to-emerald-700 text-white',
@@ -172,6 +223,16 @@ function SummaryCard({ label, value, tone, icon }: { label: string; value: strin
         <span className="text-xl">{icon}</span>
       </div>
       <p className="mt-2 text-xl font-bold">{value}</p>
+      {!!details?.length && (
+        <ul className="mt-3 space-y-1 border-t border-white/25 pt-2">
+          {details.map((item) => (
+            <li key={item.name} className="flex justify-between gap-2 text-xs">
+              <span className="truncate opacity-90">{item.name}</span>
+              <span className="shrink-0 font-semibold">{fmtRs(item.balance)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

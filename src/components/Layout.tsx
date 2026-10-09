@@ -9,6 +9,7 @@ const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'reports', label: 'Reports', icon: '📈' },
   { id: 'budget', label: 'Budget', icon: '🎯' },
   { id: 'categories', label: 'Categories', icon: '🏷️' },
+  { id: 'wallets', label: 'Wallets & Accounts', icon: '👛' },
 ];
 
 export function Layout({ page, setPage, children }: {
@@ -19,6 +20,7 @@ export function Layout({ page, setPage, children }: {
   const { theme, toggleTheme, toasts, resetAll, toast } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [resetAcknowledged, setResetAcknowledged] = useState(false);
 
   const go = (p: Page) => {
     setPage(p);
@@ -94,26 +96,27 @@ export function Layout({ page, setPage, children }: {
           <div className="card w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-2 font-semibold text-red-600">Reset all data?</h3>
             <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
-              This permanently deletes all transactions, budgets, and custom categories stored in this browser.
+              This permanently deletes all transactions, wallets, budgets, and custom categories stored in this browser.
             </p>
             <label className="mb-4 flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                id="resetAck"
-                onChange={(e) => {
-                  const btn = document.getElementById('confirmResetYes') as HTMLButtonElement | null;
-                  if (btn) btn.disabled = !e.target.checked;
-                }}
+                checked={resetAcknowledged}
+                onChange={(e) => setResetAcknowledged(e.target.checked)}
               />
               I understand this cannot be undone
             </label>
             <div className="flex justify-end gap-2">
-              <button className="btn-ghost" onClick={() => setConfirmReset(false)}>Cancel</button>
+              <button className="btn-ghost" onClick={() => { setConfirmReset(false); setResetAcknowledged(false); }}>Cancel</button>
               <button
-                id="confirmResetYes"
                 className="btn-danger"
-                disabled
-                onClick={() => { resetAll(); setConfirmReset(false); toast('All data reset'); }}
+                disabled={!resetAcknowledged}
+                onClick={() => {
+                  resetAll();
+                  setConfirmReset(false);
+                  setResetAcknowledged(false);
+                  toast('All data reset');
+                }}
               >
                 Reset
               </button>
